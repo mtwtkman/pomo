@@ -1,0 +1,1 @@
+[![rust-test](https://github.com/mtwtkman/pomo/actions/workflows/run-test.yml/badge.svg)](https://github.com/mtwtkman/pomo/actions/workflows/run-test.yml)
