@@ -1,0 +1,14 @@
+name: rust-test
+on: [push]
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name Cancel Previous Runs
+        uses: styfle/cancel-workflow-action@0.7.0
+        with:
+          access_token: ${{ github.token }}
+      - uses: actions/checkout@v2
+      - uses: mtwtkman/rust-action@master
+      - name: Run Tests
+        run: cargo test
