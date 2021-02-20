@@ -79,7 +79,7 @@ pub struct Pomodoro {
     long_break_interval: u8,
     current_status: Status,
     counter: Counter,
-    suspended: bool,
+    paused: bool,
     continuous: bool,
     until: Option<u8>,
 }
@@ -99,16 +99,16 @@ impl Pomodoro {
             long_break_interval,
             current_status: Status::Working,
             counter: Counter::new(),
-            suspended: true,
+            paused: true,
             continuous: true,  // TODO: Implemet for auto trasition.
             until,
         }
     }
 
-    fn is_done(&self) -> bool {
+    fn is_consumed(&self) -> bool {
         self.until
             .map(|u| {
-                self.counter.working.get() == u
+                self.counter.working.get() >= u
             })
             .unwrap_or(false)
     }
@@ -153,11 +153,11 @@ impl Pomodoro {
     }
 
     fn ready(&mut self) {
-        self.suspended = true;
+        self.paused = false;
     }
 
     fn stop(&mut self) {
-        self.suspended = true;
+        self.paused = true;
     }
 
     fn next_cycle(&mut self) {
@@ -172,7 +172,7 @@ impl Pomodoro {
     }
 
     async fn run(&mut self) {
-        while !self.suspended || !self.is_done() {
+        while !(self.is_consumed() || self.paused) {
             if !self.current_timer().is_done() {
                 sleep(self.current_timer().tick_range).await;
                 self.proceed();
@@ -219,7 +219,7 @@ fn pomodoro_timer_works_fine() {
         short_break_timer,
         long_break_timer,
         2,
-        None,
+        Some(3),
     );
 
     assert_eq!(pomodoro.current_status, Status::Working);
@@ -240,11 +240,14 @@ fn pomodoro_timer_works_fine() {
     pomodoro.proceed();
     pomodoro.next_cycle();
     assert_eq!(pomodoro.current_status, Status::Working);
-    assert!(!pomodoro.is_done());
+    assert!(!pomodoro.is_consumed());
+    pomodoro.proceed();
+    pomodoro.next_cycle();
+    assert!(pomodoro.is_consumed());
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
-async fn run_local() {
+async fn run_continuous_loop() {
     let working_timer = Timer::new(
 Duration::from_micros(2),
 Duration::from_micros(1),
@@ -264,8 +267,8 @@ Duration::from_micros(1),
         2,
         Some(3),
     );
-    pomodoro.run().await;
-    assert!(pomodoro.is_done());
+    pomodoro.start().await;
+    assert!(pomodoro.is_consumed());
     assert_eq!(pomodoro.counter.working.get(), 3);
     assert_eq!(pomodoro.counter.short_break.get(), 1);
     assert_eq!(pomodoro.counter.long_break.get(), 1);
