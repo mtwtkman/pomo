@@ -229,3 +229,8 @@ fn pomodoro_timer_works_fine() {
     pomodoro.next_cycle();
     assert_eq!(pomodoro.current_status, Status::Working);
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn run_local() {
+
+}
