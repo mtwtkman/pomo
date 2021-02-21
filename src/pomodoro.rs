@@ -1,5 +1,5 @@
-use std::time::Duration;
 use std::cell::Cell;
+use std::time::Duration;
 
 use tokio::time::sleep;
 
@@ -100,16 +100,14 @@ impl Pomodoro {
             current_status: Status::Working,
             counter: Counter::new(),
             paused: true,
-            continuous: true,  // TODO: Implemet for auto trasition.
+            continuous: true, // TODO: Implemet for auto trasition.
             until,
         }
     }
 
     fn is_consumed(&self) -> bool {
         self.until
-            .map(|u| {
-                self.counter.working.get() >= u
-            })
+            .map(|u| self.counter.working.get() >= u)
             .unwrap_or(false)
     }
 
@@ -185,10 +183,7 @@ impl Pomodoro {
 
 #[test]
 fn timer_struct() {
-    let t = Timer::new(
-        Duration::from_secs(2),
-        Duration::from_secs(1),
-    );
+    let t = Timer::new(Duration::from_secs(2), Duration::from_secs(1));
     assert_eq!(t.elapsed, Cell::new(Timer::initial_duration()));
     t.tick();
     assert!(!t.is_done());
@@ -202,18 +197,9 @@ fn timer_struct() {
 
 #[test]
 fn pomodoro_timer_works_fine() {
-    let working_timer = Timer::new(
-        Duration::from_micros(1),
-        Duration::from_micros(1),
-    );
-    let short_break_timer = Timer::new(
-        Duration::from_micros(1),
-        Duration::from_micros(1),
-    );
-    let long_break_timer = Timer::new(
-        Duration::from_micros(1),
-        Duration::from_micros(1),
-    );
+    let working_timer = Timer::new(Duration::from_micros(1), Duration::from_micros(1));
+    let short_break_timer = Timer::new(Duration::from_micros(1), Duration::from_micros(1));
+    let long_break_timer = Timer::new(Duration::from_micros(1), Duration::from_micros(1));
     let mut pomodoro = Pomodoro::new(
         working_timer,
         short_break_timer,
@@ -248,18 +234,9 @@ fn pomodoro_timer_works_fine() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn run_continuous_loop() {
-    let working_timer = Timer::new(
-Duration::from_micros(2),
-Duration::from_micros(1),
-    );
-    let short_break_timer = Timer::new(
-        Duration::from_micros(3),
-        Duration::from_micros(1),
-    );
-    let long_break_timer = Timer::new(
-        Duration::from_micros(4),
-        Duration::from_micros(1),
-    );
+    let working_timer = Timer::new(Duration::from_micros(2), Duration::from_micros(1));
+    let short_break_timer = Timer::new(Duration::from_micros(3), Duration::from_micros(1));
+    let long_break_timer = Timer::new(Duration::from_micros(4), Duration::from_micros(1));
     let mut pomodoro = Pomodoro::new(
         working_timer,
         short_break_timer,
