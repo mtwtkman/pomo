@@ -90,6 +90,7 @@ impl Pomodoro {
         short_break: Timer,
         long_break: Timer,
         long_break_interval: u8,
+        continuous: bool,
         until: Option<u8>,
     ) -> Self {
         Self {
@@ -100,7 +101,7 @@ impl Pomodoro {
             current_status: Status::Working,
             counter: Counter::new(),
             paused: true,
-            continuous: true, // TODO: Implemet for auto trasition.
+            continuous,
             until,
         }
     }
@@ -178,8 +179,11 @@ impl Pomodoro {
             if !self.current_timer().is_done() {
                 sleep(self.current_timer().tick_range).await;
                 self.proceed();
-            } else {
-                self.next_cycle();
+                continue;
+            }
+            self.next_cycle();
+            if !self.continuous {
+                self.pause();
             }
         }
     }
@@ -209,6 +213,7 @@ fn pomodoro_timer_works_fine() {
         short_break_timer,
         long_break_timer,
         2,
+        true,
         Some(3),
     );
 
@@ -237,7 +242,7 @@ fn pomodoro_timer_works_fine() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
-async fn run_continuous_loop() {
+async fn trasition() {
     let working_timer = Timer::new(Duration::from_micros(2), Duration::from_micros(1));
     let short_break_timer = Timer::new(Duration::from_micros(3), Duration::from_micros(1));
     let long_break_timer = Timer::new(Duration::from_micros(4), Duration::from_micros(1));
@@ -246,6 +251,7 @@ async fn run_continuous_loop() {
         short_break_timer,
         long_break_timer,
         2,
+        true,
         Some(3),
     );
     pomodoro.start().await;
@@ -253,4 +259,24 @@ async fn run_continuous_loop() {
     assert_eq!(pomodoro.counter.working.get(), 3);
     assert_eq!(pomodoro.counter.short_break.get(), 1);
     assert_eq!(pomodoro.counter.long_break.get(), 1);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn continous_option_false() {
+    let working_timer = Timer::new(Duration::from_micros(1), Duration::from_micros(1));
+    let short_break_timer = Timer::new(Duration::from_micros(1), Duration::from_micros(1));
+    let long_break_timer = Timer::new(Duration::from_micros(1), Duration::from_micros(1));
+    let mut pomodoro = Pomodoro::new(
+        working_timer,
+        short_break_timer,
+        long_break_timer,
+        2,
+        false,
+        None,
+    );
+    pomodoro.start().await;
+    assert!(!pomodoro.is_active());
+    assert_eq!(pomodoro.counter.working.get(), 1);
+    assert_eq!(pomodoro.counter.short_break.get(), 0);
+    assert_eq!(pomodoro.counter.long_break.get(), 0);
 }
