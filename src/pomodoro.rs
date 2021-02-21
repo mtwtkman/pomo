@@ -1,4 +1,4 @@
-use std::{cell::Cell, ops::DerefMut};
+use std::cell::Cell;
 use std::time::Duration;
 
 use tokio::time::sleep;
@@ -149,16 +149,16 @@ impl Pomodoro {
         !self.paused
     }
 
-    async fn start(&mut self) {
+    pub async fn start(&mut self) {
         self.resume();
         self.run().await;
     }
 
-    fn resume(&mut self) {
+    pub fn resume(&mut self) {
         self.paused = false;
     }
 
-    fn pause(&mut self) {
+    pub fn pause(&mut self) {
         self.paused = true;
     }
 
