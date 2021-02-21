@@ -1,10 +1,7 @@
-use std::cell::Cell;
+use std::{cell::Cell, ops::DerefMut};
 use std::time::Duration;
-use std::sync::{Arc, Mutex};
-use std::thread;
 
 use tokio::time::sleep;
-use tokio::sync::oneshot::{self, Sender, Receiver};
 
 #[derive(Clone, PartialEq, Eq, Debug)]
 enum Status {
@@ -75,13 +72,6 @@ impl Timer {
     }
 }
 
-enum Signal {
-    Start,
-    Stop,
-}
-
-type Shared<T> = Arc<Mutex<T>>;
-
 pub struct Pomodoro {
     working: Timer,
     short_break: Timer,
@@ -89,10 +79,9 @@ pub struct Pomodoro {
     long_break_interval: u8,
     current_status: Status,
     counter: Counter,
-    paused: Shared<bool>,
+    paused: bool,
     continuous: bool,
     until: Option<u8>,
-    channel: (Shared<Sender<Signal>>, Shared<Receiver<Signal>>),
 }
 
 impl Pomodoro {
@@ -103,7 +92,6 @@ impl Pomodoro {
         long_break_interval: u8,
         until: Option<u8>,
     ) -> Self {
-        let channel = oneshot::channel::<Signal>();
         Self {
             working: working,
             short_break,
@@ -111,10 +99,9 @@ impl Pomodoro {
             long_break_interval,
             current_status: Status::Working,
             counter: Counter::new(),
-            paused: Arc::new(Mutex::new(true)),
+            paused: true,
             continuous: true, // TODO: Implemet for auto trasition.
             until,
-            channel: (Arc::new(Mutex::new(channel.0)), Arc::new(Mutex::new(channel.1))),
         }
     }
 
@@ -159,32 +146,20 @@ impl Pomodoro {
     }
 
     fn is_active(&self) -> bool {
-        let paused_mutex = self.paused.clone();
-        thread::spawn(move || {
-            !*paused_mutex.lock().unwrap()
-        }).join().unwrap()
+        !self.paused
     }
 
     async fn start(&mut self) {
-        let paused_mutex = self.paused.clone();
-        thread::spawn(move || {
-            *paused_mutex.lock().unwrap() = false;
-        }).join().unwrap();
+        self.resume();
         self.run().await;
     }
 
-    fn resume(&self) {
-        let paused_mutex = self.paused.clone();
-        thread::spawn(move || {
-            *paused_mutex.lock().unwrap() = false;
-        }).join().unwrap();
+    fn resume(&mut self) {
+        self.paused = false;
     }
 
-    fn pause(&self) {
-        let paused_mutex = self.paused.clone();
-        thread::spawn(move || {
-            *paused_mutex.lock().unwrap() = true;
-        }).join().unwrap();
+    fn pause(&mut self) {
+        self.paused = true;
     }
 
     fn next_cycle(&mut self) {
@@ -284,25 +259,26 @@ async fn run_continuous_loop() {
 // #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn send_stop_signal() {
     let working_timer = Timer::new(
-        Duration::from_secs(2),
-        Duration::from_secs(1),
+        Duration::from_micros(30),
+        Duration::from_micros(10),
     );
     let short_break_timer = Timer::new(
-        Duration::from_secs(2),
-        Duration::from_secs(1),
+        Duration::from_micros(30),
+        Duration::from_micros(10),
     );
     let long_break_timer = Timer::new(
-        Duration::from_secs(2),
-        Duration::from_secs(1),
+        Duration::from_micros(30),
+        Duration::from_micros(10),
     );
     let mut pomodoro = Pomodoro::new(
         working_timer,
         short_break_timer,
         long_break_timer,
         1,
-        None,
+        Some(5),
     );
     pomodoro.start().await;
     assert!(!pomodoro.is_active());
-    sleep(Duration::from_secs(1)).await;
+    sleep(Duration::from_micros(10)).await;
+    pomodoro.pause();
 }
