@@ -254,31 +254,3 @@ async fn run_continuous_loop() {
     assert_eq!(pomodoro.counter.short_break.get(), 1);
     assert_eq!(pomodoro.counter.long_break.get(), 1);
 }
-
-
-// #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn send_stop_signal() {
-    let working_timer = Timer::new(
-        Duration::from_micros(30),
-        Duration::from_micros(10),
-    );
-    let short_break_timer = Timer::new(
-        Duration::from_micros(30),
-        Duration::from_micros(10),
-    );
-    let long_break_timer = Timer::new(
-        Duration::from_micros(30),
-        Duration::from_micros(10),
-    );
-    let mut pomodoro = Pomodoro::new(
-        working_timer,
-        short_break_timer,
-        long_break_timer,
-        1,
-        Some(5),
-    );
-    pomodoro.start().await;
-    assert!(!pomodoro.is_active());
-    sleep(Duration::from_micros(10)).await;
-    pomodoro.pause();
-}
