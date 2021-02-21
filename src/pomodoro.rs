@@ -40,7 +40,7 @@ impl Counter {
 }
 
 #[derive(Debug, Clone)]
-struct Timer {
+pub struct Timer {
     lifespan: Duration,
     tick_range: Duration,
     elapsed: Cell<Duration>,
@@ -55,19 +55,19 @@ impl Timer {
         }
     }
 
-    pub fn initial_duration() -> Duration {
+    fn initial_duration() -> Duration {
         Duration::from_secs(0)
     }
 
-    pub fn reset(&self) {
+    fn reset(&self) {
         self.elapsed.set(Self::initial_duration());
     }
 
-    pub fn tick(&self) {
+    fn tick(&self) {
         self.elapsed.set(self.elapsed.get() + self.tick_range);
     }
 
-    pub fn is_done(&self) -> bool {
+    fn is_done(&self) -> bool {
         self.elapsed.get() >= self.lifespan
     }
 }
@@ -85,7 +85,7 @@ pub struct Pomodoro {
 }
 
 impl Pomodoro {
-    fn new(
+    pub fn new(
         working: Timer,
         short_break: Timer,
         long_break: Timer,
