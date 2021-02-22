@@ -1,3 +1,4 @@
+use std::sync::Mutex;
 use std::cell::Cell;
 use std::time::Duration;
 
@@ -72,6 +73,8 @@ impl Timer {
     }
 }
 
+struct State;
+
 pub struct Pomodoro {
     working: Timer,
     short_break: Timer,
@@ -79,7 +82,7 @@ pub struct Pomodoro {
     long_break_interval: u8,
     current_status: Status,
     counter: Counter,
-    paused: bool,
+    paused: Mutex<Cell<bool>>,
     continuous: bool,
     until: Option<u8>,
 }
@@ -100,7 +103,7 @@ impl Pomodoro {
             long_break_interval,
             current_status: Status::Working,
             counter: Counter::new(),
-            paused: true,
+            paused: Mutex::new(Cell::new(true)),
             continuous,
             until,
         }
@@ -147,7 +150,7 @@ impl Pomodoro {
     }
 
     fn is_active(&self) -> bool {
-        !self.paused
+        !self.paused.lock().unwrap().get()
     }
 
     pub async fn start(&mut self) {
@@ -155,12 +158,14 @@ impl Pomodoro {
         self.run().await;
     }
 
-    pub fn resume(&mut self) {
-        self.paused = false;
+    pub fn resume(&self) {
+        let paused = self.paused.lock().unwrap();
+        paused.set(false);
     }
 
-    pub fn pause(&mut self) {
-        self.paused = true;
+    pub fn pause(&self) {
+        let paused = self.paused.lock().unwrap();
+        paused.set(true);
     }
 
     fn next_cycle(&mut self) {
@@ -262,7 +267,7 @@ async fn trasition() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
-async fn continous_option_false() {
+async fn continuous_option_false() {
     let working_timer = Timer::new(Duration::from_micros(1), Duration::from_micros(1));
     let short_break_timer = Timer::new(Duration::from_micros(1), Duration::from_micros(1));
     let long_break_timer = Timer::new(Duration::from_micros(1), Duration::from_micros(1));
