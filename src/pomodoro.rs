@@ -330,7 +330,8 @@ async fn execution() {
         Some(10),
     );
     pomodoro.run().await;
-    sleep(Duration::from_micros(10)).await;
+    sleep(Duration::from_micros(3)).await;
     pomodoro.pause();
     assert!(!pomodoro.is_active());
+    assert_eq!(pomodoro.counter.working.get(), 3);
 }
