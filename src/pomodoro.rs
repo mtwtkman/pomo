@@ -1,11 +1,8 @@
-use std::sync::{Arc, Mutex};
+use std::sync::Mutex;
 use std::cell::Cell;
 use std::time::Duration;
 
-use tokio::sync::mpsc;
 use tokio::time::sleep;
-
-type Shared<T> = Arc<Mutex<T>>;
 
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -17,64 +14,46 @@ enum Status {
 
 #[derive(Debug, Clone)]
 struct Counter {
-    working: Shared<Cell<u8>>,
-    short_break: Shared<Cell<u8>>,
-    long_break: Shared<Cell<u8>>,
+    working: Cell<u8>,
+    short_break: Cell<u8>,
+    long_break: Cell<u8>,
 }
 
 impl Counter {
     fn new() -> Self {
         Self {
-            working: Arc::new(Mutex::new(Cell::new(0))),
-            short_break: Arc::new(Mutex::new(Cell::new(0))),
-            long_break: Arc::new(Mutex::new(Cell::new(0))),
+            working: Cell::new(0),
+            short_break: Cell::new(0),
+            long_break: Cell::new(0),
         }
     }
 
     fn increment_working(&self) {
-        let lock = self.working.lock().unwrap();
-        lock.set(lock.get() + 1);
+        self.working.set(self.working.get() + 1);
     }
 
     fn increment_short_break(&self) {
-        let lock = self.short_break.lock().unwrap();
-        lock.set(lock.get() + 1);
+        self.short_break.set(self.short_break.get() + 1);
     }
 
     fn increment_long_break(&self) {
-        let lock = self.long_break.lock().unwrap();
-        lock.set(lock.get() + 1)
-    }
-
-    fn current_working(&self) -> u8 {
-        let lock = self.working.lock().unwrap();
-        lock.get()
-    }
-
-    fn current_short_break(&self) -> u8 {
-        let lock = self.short_break.lock().unwrap();
-        lock.get()
-    }
-
-    fn current_long_break(&self) -> u8 {
-        let lock = self.long_break.lock().unwrap();
-        lock.get()
+        self.long_break.set(self.long_break.get() + 1);
     }
 }
 
 #[derive(Debug, Clone)]
-pub struct Timer {
+pub struct Clock {
     lifespan: Duration,
     tick_range: Duration,
-    elapsed: Shared<Cell<Duration>>,
+    elapsed: Cell<Duration>,
 }
 
-impl Timer {
+impl Clock {
     pub fn new(lifespan: Duration, tick_range: Duration) -> Self {
         Self {
             lifespan,
             tick_range,
-            elapsed: Arc::new(Mutex::new(Cell::new(Self::initial_duration()))),
+            elapsed: Cell::new(Self::initial_duration()),
         }
     }
 
@@ -83,23 +62,15 @@ impl Timer {
     }
 
     fn reset(&self) {
-        let lock = self.elapsed.lock().unwrap();
-        lock.set(Self::initial_duration());
+        self.elapsed.set(Self::initial_duration());
     }
 
     fn tick(&self) {
-        let lock = self.elapsed.lock().unwrap();
-        lock.set(lock.get() + self.tick_range);
+        self.elapsed.set(self.elapsed.get() + self.tick_range);
     }
 
     fn is_done(&self) -> bool {
-        let lock = self.elapsed.lock().unwrap();
-        lock.get() >= self.lifespan
-    }
-
-    fn current_elapsed(&self) -> Duration {
-        let lock = self.elapsed.lock().unwrap();
-        lock.get()
+        self.elapsed.get() >= self.lifespan
     }
 }
 
@@ -125,9 +96,9 @@ impl InnerState {
 }
 
 pub struct Pomodoro {
-    working: Timer,
-    short_break: Timer,
-    long_break: Timer,
+    working: Clock,
+    short_break: Clock,
+    long_break: Clock,
     long_break_interval: u8,
     counter: Counter,
     continuous: bool,
@@ -137,9 +108,9 @@ pub struct Pomodoro {
 
 impl Pomodoro {
     pub fn new(
-        working: Timer,
-        short_break: Timer,
-        long_break: Timer,
+        working: Clock,
+        short_break: Clock,
+        long_break: Clock,
         long_break_interval: u8,
         continuous: bool,
         until: Option<u8>,
@@ -162,7 +133,7 @@ impl Pomodoro {
 
     fn is_consumed(&self) -> bool {
         self.until
-            .map(|u| self.counter.current_working() >= u)
+            .map(|u| self.counter.working.get() >= u)
             .unwrap_or(false)
     }
 
@@ -174,7 +145,7 @@ impl Pomodoro {
         self.inner_state.reveal_paused()
     }
 
-    fn current_timer(&self) -> &Timer {
+    fn current_timer(&self) -> &Clock {
         match self.current_status() {
             Status::Working => &self.working,
             Status::ShortBreak => &self.short_break,
@@ -191,7 +162,7 @@ impl Pomodoro {
     }
 
     fn reached_long_break(&self) -> bool {
-        let v = self.counter.current_working();
+        let v = self.counter.working.get();
         v > 0 && v % self.long_break_interval == 0
     }
 
@@ -238,7 +209,10 @@ impl Pomodoro {
         self.resume();
         while !self.is_consumed() && self.is_active() {
             if !self.current_timer().is_done() {
-                sleep(self.current_timer().tick_range).await;
+                let tick = self.current_timer().tick_range;
+                tokio::spawn(async move {
+                    sleep(tick).await;
+                });
                 self.proceed();
                 continue;
             }
@@ -250,43 +224,25 @@ impl Pomodoro {
     }
 }
 
-struct Client {
-    transmitter: mpsc::Sender<Signal>,
-}
-
-async fn start(pomodoro: Pomodoro) -> Client {
-    let (tx, mut rx) = mpsc::channel::<Signal>(2); // buffer is adhoc.
-    tokio::spawn(async move {
-        while let Some(signal) = rx.recv().await {
-            match signal {
-                Signal::Resume => pomodoro.resume(),
-                Signal::Pause => pomodoro.pause(),
-            };
-        }
-        pomodoro.run().await;
-    });
-    Client { transmitter: tx }
-}
-
 #[test]
 fn timer_struct() {
-    let t = Timer::new(Duration::from_secs(2), Duration::from_secs(1));
-    assert_eq!(t.current_elapsed(), Timer::initial_duration());
+    let t = Clock::new(Duration::from_secs(2), Duration::from_secs(1));
+    assert_eq!(t.elapsed.get(), Clock::initial_duration());
     t.tick();
     assert!(!t.is_done());
-    assert_eq!(t.current_elapsed(), t.tick_range);
+    assert_eq!(t.elapsed.get(), t.tick_range);
     t.tick();
     assert!(t.is_done());
     t.reset();
-    assert_eq!(t.current_elapsed(), Timer::initial_duration());
+    assert_eq!(t.elapsed.get(), Clock::initial_duration());
     assert!(!t.is_done());
 }
 
 #[test]
 fn pomodoro_timer_works_fine() {
-    let working_timer = Timer::new(Duration::from_micros(1), Duration::from_micros(1));
-    let short_break_timer = Timer::new(Duration::from_micros(1), Duration::from_micros(1));
-    let long_break_timer = Timer::new(Duration::from_micros(1), Duration::from_micros(1));
+    let working_timer = Clock::new(Duration::from_micros(1), Duration::from_micros(1));
+    let short_break_timer = Clock::new(Duration::from_micros(1), Duration::from_micros(1));
+    let long_break_timer = Clock::new(Duration::from_micros(1), Duration::from_micros(1));
     let pomodoro = Pomodoro::new(
         working_timer,
         short_break_timer,
@@ -303,7 +259,7 @@ fn pomodoro_timer_works_fine() {
     assert!(pomodoro.current_timer().is_done());
     assert_eq!(pomodoro.next_status(), Status::ShortBreak);
     pomodoro.next_cycle();
-    assert_eq!(pomodoro.counter.current_working(), 1);
+    assert_eq!(pomodoro.counter.working.get(), 1);
     assert_eq!(pomodoro.current_status(), Status::ShortBreak);
     pomodoro.proceed();
     pomodoro.next_cycle();
@@ -322,9 +278,9 @@ fn pomodoro_timer_works_fine() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn trasition() {
-    let working_timer = Timer::new(Duration::from_micros(2), Duration::from_micros(1));
-    let short_break_timer = Timer::new(Duration::from_micros(3), Duration::from_micros(1));
-    let long_break_timer = Timer::new(Duration::from_micros(4), Duration::from_micros(1));
+    let working_timer = Clock::new(Duration::from_micros(2), Duration::from_micros(1));
+    let short_break_timer = Clock::new(Duration::from_micros(3), Duration::from_micros(1));
+    let long_break_timer = Clock::new(Duration::from_micros(4), Duration::from_micros(1));
     let pomodoro = Pomodoro::new(
         working_timer,
         short_break_timer,
@@ -335,16 +291,16 @@ async fn trasition() {
     );
     pomodoro.run().await;
     assert!(pomodoro.is_consumed());
-    assert_eq!(pomodoro.counter.current_working(), 3);
-    assert_eq!(pomodoro.counter.current_short_break(), 1);
-    assert_eq!(pomodoro.counter.current_long_break(), 1);
+    assert_eq!(pomodoro.counter.working.get(), 3);
+    assert_eq!(pomodoro.counter.short_break.get(), 1);
+    assert_eq!(pomodoro.counter.long_break.get(), 1);
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn continuous_option_false() {
-    let working_timer = Timer::new(Duration::from_micros(1), Duration::from_micros(1));
-    let short_break_timer = Timer::new(Duration::from_micros(1), Duration::from_micros(1));
-    let long_break_timer = Timer::new(Duration::from_micros(1), Duration::from_micros(1));
+    let working_timer = Clock::new(Duration::from_micros(1), Duration::from_micros(1));
+    let short_break_timer = Clock::new(Duration::from_micros(1), Duration::from_micros(1));
+    let long_break_timer = Clock::new(Duration::from_micros(1), Duration::from_micros(1));
     let pomodoro = Pomodoro::new(
         working_timer,
         short_break_timer,
@@ -355,26 +311,26 @@ async fn continuous_option_false() {
     );
     pomodoro.run().await;
     assert!(!pomodoro.is_active());
-    assert_eq!(pomodoro.counter.current_working(), 1);
-    assert_eq!(pomodoro.counter.current_short_break(), 0);
-    assert_eq!(pomodoro.counter.current_long_break(), 0);
+    assert_eq!(pomodoro.counter.working.get(), 1);
+    assert_eq!(pomodoro.counter.short_break.get(), 0);
+    assert_eq!(pomodoro.counter.long_break.get(), 0);
 }
 
-// #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn execution() {
-    let working_timer = Timer::new(Duration::from_secs(1), Duration::from_secs(1));
-    let short_break = Timer::new(Duration::from_secs(1), Duration::from_secs(1));
-    let long_break = Timer::new(Duration::from_secs(1), Duration::from_secs(1));
+    let working_timer = Clock::new(Duration::from_micros(1), Duration::from_micros(1));
+    let short_break = Clock::new(Duration::from_micros(1), Duration::from_micros(1));
+    let long_break = Clock::new(Duration::from_micros(1), Duration::from_micros(1));
     let pomodoro = Pomodoro::new(
         working_timer,
         short_break,
         long_break,
-        1,
+        10,
         true,
-        Some(3),
+        Some(10),
     );
     pomodoro.run().await;
-    sleep(Duration::from_secs(2)).await;
+    sleep(Duration::from_micros(10)).await;
     pomodoro.pause();
-    assert_eq!(pomodoro.counter.current_working(), 2);
+    assert!(!pomodoro.is_active());
 }
