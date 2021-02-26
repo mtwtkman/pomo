@@ -211,9 +211,7 @@ impl Pomodoro {
         while !self.is_consumed() && self.is_active() {
             if !self.current_timer().is_done() {
                 let tick = self.current_timer().tick_range;
-                tokio::spawn(async move {
-                    sleep(tick).await;
-                });
+                sleep(tick).await;
                 self.proceed();
                 continue;
             }
@@ -316,23 +314,3 @@ async fn continuous_option_false() {
     assert_eq!(pomodoro.counter.short_break.get(), 0);
     assert_eq!(pomodoro.counter.long_break.get(), 0);
 }
-
-// #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
-// async fn execution() {
-//     let working_timer = Clock::new(Duration::from_micros(1), Duration::from_micros(1));
-//     let short_break = Clock::new(Duration::from_micros(1), Duration::from_micros(1));
-//     let long_break = Clock::new(Duration::from_micros(1), Duration::from_micros(1));
-//     let pomodoro = Pomodoro::new(
-//         working_timer,
-//         short_break,
-//         long_break,
-//         10,
-//         true,
-//         Some(10),
-//     );
-//     pomodoro.run().await;
-//     sleep(Duration::from_micros(3)).await;
-//     pomodoro.pause();
-//     assert!(!pomodoro.is_active());
-//     assert_eq!(pomodoro.counter.working.get(), 3);
-// }
