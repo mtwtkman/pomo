@@ -210,7 +210,7 @@ impl Pomodoro {
 
 #[test]
 fn timer_struct() {
-    let mut t = Clock::new(Duration::from_secs(2), Duration::from_secs(1));
+    let t = Clock::new(Duration::from_secs(2), Duration::from_secs(1));
     assert_eq!(t.elapsed.get(), Clock::initial_duration());
     t.tick();
     assert!(!t.is_done());
