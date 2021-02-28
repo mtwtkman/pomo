@@ -1,4 +1,4 @@
-use std::sync::{Mutex, mpsc};
+use std::sync::mpsc;
 use std::cell::Cell;
 use std::time::Duration;
 
@@ -91,8 +91,6 @@ pub struct Pomodoro {
     until: Option<u8>,
     current_status: Status,
     paused: bool,
-    receiver: mpsc::Receiver<Signal>,
-    sender: mpsc::Sender<Signal>,
 }
 
 impl Pomodoro {
@@ -104,7 +102,6 @@ impl Pomodoro {
         continuous: bool,
         until: Option<u8>,
     ) -> Self {
-        let (sender, receiver) = mpsc::channel();
         Self {
             working: working,
             short_break,
@@ -115,8 +112,6 @@ impl Pomodoro {
             until,
             current_status: Status::Working,
             paused: true,
-            receiver,
-            sender,
         }
     }
 
