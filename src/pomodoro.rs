@@ -186,9 +186,15 @@ impl Pomodoro {
         self.current_timer().tick();
     }
 
-    pub async fn run(&mut self) {
+    pub async fn run(&mut self, receiver: mpsc::Receiver<Signal>) {
         self.resume();
         while !self.is_consumed() && self.is_active() {
+            if let Ok(signal) = receiver.recv() {
+                match signal {
+                    Signal::Pause => self.pause(),
+                    Signal::Resume => self.resume(),
+                };
+            }
             if !self.current_timer().is_done() {
                 let tick = self.current_timer().tick_range;
                 sleep(tick).await;
@@ -268,7 +274,8 @@ async fn trasition() {
         true,
         Some(3),
     );
-    pomodoro.run().await;
+    let (_, receiver) = mpsc::channel::<Signal>();
+    pomodoro.run(receiver).await;
     assert!(pomodoro.is_consumed());
     assert_eq!(pomodoro.counter.working, 3);
     assert_eq!(pomodoro.counter.short_break, 1);
@@ -288,9 +295,32 @@ async fn continuous_option_false() {
         false,
         None,
    );
-    pomodoro.run().await;
+   let (_, receiver) = mpsc::channel::<Signal>();
+    pomodoro.run(receiver).await;
     assert!(!pomodoro.is_active());
     assert_eq!(pomodoro.counter.working, 1);
     assert_eq!(pomodoro.counter.short_break, 0);
     assert_eq!(pomodoro.counter.long_break, 0);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn runtime() {
+    let working_timer = Clock::new(Duration::from_micros(1), Duration::from_micros(1));
+    let short_break_timer = Clock::new(Duration::from_micros(1), Duration::from_micros(1));
+    let long_break_timer = Clock::new(Duration::from_micros(1), Duration::from_micros(1));
+    let mut pomodoro = Pomodoro::new(
+        working_timer,
+        short_break_timer,
+        long_break_timer,
+        2,
+        true,
+        Some(100),
+    );
+    let (sender, receiver) = mpsc::channel::<Signal>();
+    tokio::spawn(async move {
+        pomodoro.run(receiver).await;
+    });
+    sleep(Duration::from_micros(1)).await;
+    let result = sender.send(Signal::Pause);
+    assert!(result.is_ok());
 }
