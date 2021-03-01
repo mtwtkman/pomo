@@ -183,7 +183,7 @@ impl Pomodoro {
         self.current_timer().tick();
     }
 
-    async fn take_interval(&self) {
+    async fn wait(&self) {
         let tick = self.current_timer().tick_range;
         sleep(tick).await;
         self.proceed();
@@ -193,7 +193,7 @@ impl Pomodoro {
         self.resume();
         while !self.is_consumed() && self.is_active() {
             if !self.current_timer().is_done() {
-                self.take_interval().await;
+                self.wait().await;
                 continue;
             }
             self.next_cycle();
