@@ -45,6 +45,20 @@ struct Shared {
     paused: Arc<Mutex<bool>>,
 }
 
+impl Shared {
+    fn new() -> Self {
+        Self { paused: Arc::new(Mutex::new(true)) }
+    }
+
+    fn pause(&mut self) {
+        *self.paused.lock().unwrap() = true
+    }
+
+    fn resume(&self) {
+        *self.paused.lock().unwrap() = false
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct Clock {
     lifespan: Duration,
@@ -93,7 +107,7 @@ pub struct Pomodoro {
     continuous: bool,
     until: Option<u8>,
     current_status: Phase,
-    paused: bool,
+    shared: Shared,
 }
 
 impl Pomodoro {
@@ -114,7 +128,7 @@ impl Pomodoro {
             continuous,
             until,
             current_status: Phase::Working,
-            paused: true,
+            shared: Shared::new(),
         }
     }
 
@@ -163,16 +177,8 @@ impl Pomodoro {
     }
 
     fn is_active(&self) -> bool {
-        !self.paused
-
-    }
-
-    fn resume(&mut self) {
-        self.paused = false;
-    }
-
-    fn pause(&mut self) {
-        self.paused = true;
+        let paused = self.shared.paused.lock().unwrap();
+        !*paused
     }
 
     fn next_cycle(&mut self) {
@@ -193,7 +199,7 @@ impl Pomodoro {
     }
 
     pub async fn run(&mut self) {
-        self.resume();
+        self.shared.resume();
         while !self.is_consumed() && self.is_active() {
             if !self.current_timer().is_done() {
                 self.wait().await;
@@ -201,7 +207,7 @@ impl Pomodoro {
             }
             self.next_cycle();
             if !self.continuous {
-                self.pause();
+                self.shared.pause();
             }
         };
     }
