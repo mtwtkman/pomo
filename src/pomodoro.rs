@@ -183,13 +183,17 @@ impl Pomodoro {
         self.current_timer().tick();
     }
 
+    async fn take_interval(&self) {
+        let tick = self.current_timer().tick_range;
+        sleep(tick).await;
+        self.proceed();
+    }
+
     pub async fn run(&mut self) {
         self.resume();
         while !self.is_consumed() && self.is_active() {
             if !self.current_timer().is_done() {
-                let tick = self.current_timer().tick_range;
-                sleep(tick).await;
-                self.proceed();
+                self.take_interval().await;
                 continue;
             }
             self.next_cycle();
@@ -198,14 +202,6 @@ impl Pomodoro {
             }
         };
     }
-}
-
-async fn launch(mut pomodoro: Pomodoro) -> mpsc::Sender<Signal> {
-    let (sender, receiver) = mpsc::channel::<Signal>();
-    tokio::spawn(async move {
-        pomodoro.run().await;
-    });
-    sender
 }
 
 #[test]
