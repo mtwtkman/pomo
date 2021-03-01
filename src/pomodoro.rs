@@ -1,6 +1,6 @@
 use std::cell::Cell;
 use std::time::Duration;
-use std::sync::{Arc, Mutex, mpsc};
+use std::sync::{Arc, Mutex};
 
 use tokio::time::sleep;
 
@@ -42,20 +42,20 @@ impl Counter {
 }
 
 struct Shared {
-    paused: Arc<Mutex<bool>>,
+    paused: bool,
 }
 
 impl Shared {
     fn new() -> Self {
-        Self { paused: Arc::new(Mutex::new(true)) }
+        Self { paused: true }
     }
 
     fn pause(&mut self) {
-        *self.paused.lock().unwrap() = true
+        self.paused = true
     }
 
-    fn resume(&self) {
-        *self.paused.lock().unwrap() = false
+    fn resume(&mut self) {
+        self.paused = false
     }
 }
 
@@ -107,7 +107,7 @@ pub struct Pomodoro {
     continuous: bool,
     until: Option<u8>,
     current_status: Phase,
-    shared: Shared,
+    shared: Arc<Mutex<Shared>>,
 }
 
 impl Pomodoro {
@@ -128,7 +128,7 @@ impl Pomodoro {
             continuous,
             until,
             current_status: Phase::Working,
-            shared: Shared::new(),
+            shared: Arc::new(Mutex::new(Shared::new())),
         }
     }
 
@@ -177,8 +177,8 @@ impl Pomodoro {
     }
 
     fn is_active(&self) -> bool {
-        let paused = self.shared.paused.lock().unwrap();
-        !*paused
+        let paused = self.shared.lock().unwrap().paused;
+        !paused
     }
 
     fn next_cycle(&mut self) {
@@ -198,8 +198,18 @@ impl Pomodoro {
         self.proceed();
     }
 
+    fn pause(&self) {
+        let shared = self.shared.clone();
+        shared.lock().unwrap().pause();
+    }
+
+    fn resume(&self) {
+        let shared = self.shared.clone();
+        shared.lock().unwrap().resume();
+    }
+
     pub async fn run(&mut self) {
-        self.shared.resume();
+        self.resume();
         while !self.is_consumed() && self.is_active() {
             if !self.current_timer().is_done() {
                 self.wait().await;
@@ -207,7 +217,7 @@ impl Pomodoro {
             }
             self.next_cycle();
             if !self.continuous {
-                self.shared.pause();
+                self.pause();
             }
         };
     }
