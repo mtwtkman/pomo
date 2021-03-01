@@ -1,13 +1,12 @@
-use std::sync::mpsc;
 use std::cell::Cell;
 use std::time::Duration;
+use std::sync::{Arc, Mutex, mpsc};
 
 use tokio::time::sleep;
-use tokio::sync::oneshot;
 
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-enum Status {
+enum Phase {
     Working,
     ShortBreak,
     LongBreak,
@@ -40,6 +39,10 @@ impl Counter {
     fn increment_long_break(&mut self) {
         self.long_break += 1;
     }
+}
+
+struct Shared {
+    paused: Arc<Mutex<bool>>,
 }
 
 #[derive(Debug, Clone)]
@@ -89,7 +92,7 @@ pub struct Pomodoro {
     counter: Counter,
     continuous: bool,
     until: Option<u8>,
-    current_status: Status,
+    current_status: Phase,
     paused: bool,
 }
 
@@ -110,7 +113,7 @@ impl Pomodoro {
             counter: Counter::new(),
             continuous,
             until,
-            current_status: Status::Working,
+            current_status: Phase::Working,
             paused: true,
         }
     }
@@ -121,23 +124,23 @@ impl Pomodoro {
             .unwrap_or(false)
     }
 
-    fn current_status(&self) -> Status {
+    fn current_status(&self) -> Phase {
         self.current_status.clone()
     }
 
     fn current_timer(&self) -> &Clock {
         match self.current_status() {
-            Status::Working => &self.working,
-            Status::ShortBreak => &self.short_break,
-            Status::LongBreak =>  &self.long_break,
+            Phase::Working => &self.working,
+            Phase::ShortBreak => &self.short_break,
+            Phase::LongBreak =>  &self.long_break,
         }
     }
 
     fn increment_current_status_counter(&mut self) {
         match self.current_status() {
-            Status::Working => self.counter.increment_working(),
-            Status::ShortBreak => self.counter.increment_short_break(),
-            Status::LongBreak => self.counter.increment_long_break(),
+            Phase::Working => self.counter.increment_working(),
+            Phase::ShortBreak => self.counter.increment_short_break(),
+            Phase::LongBreak => self.counter.increment_long_break(),
         };
     }
 
@@ -146,16 +149,16 @@ impl Pomodoro {
         v > 0 && v % self.long_break_interval == 0
     }
 
-    fn next_status(&mut self) -> Status {
+    fn next_status(&mut self) -> Phase {
         if !self.current_timer().is_done() {
             return self.current_status();
-        } else if self.current_status() != Status::LongBreak && self.is_reached_long_break() {
-            return Status::LongBreak;
+        } else if self.current_status() != Phase::LongBreak && self.is_reached_long_break() {
+            return Phase::LongBreak;
         }
         match self.current_status() {
-            Status::Working => Status::ShortBreak,
-            Status::ShortBreak => Status::Working,
-            Status::LongBreak => Status::Working,
+            Phase::Working => Phase::ShortBreak,
+            Phase::ShortBreak => Phase::Working,
+            Phase::LongBreak => Phase::Working,
         }
     }
 
@@ -232,24 +235,24 @@ fn pomodoro_timer_works_fine() {
         Some(3),
     );
 
-    assert_eq!(pomodoro.current_status(), Status::Working);
-    assert_eq!(pomodoro.next_status(), Status::Working);
+    assert_eq!(pomodoro.current_status(), Phase::Working);
+    assert_eq!(pomodoro.next_status(), Phase::Working);
     assert!(!pomodoro.is_reached_long_break());
     pomodoro.proceed();
     assert!(pomodoro.current_timer().is_done());
-    assert_eq!(pomodoro.next_status(), Status::ShortBreak);
+    assert_eq!(pomodoro.next_status(), Phase::ShortBreak);
     pomodoro.next_cycle();
     assert_eq!(pomodoro.counter.working, 1);
-    assert_eq!(pomodoro.current_status(), Status::ShortBreak);
+    assert_eq!(pomodoro.current_status(), Phase::ShortBreak);
     pomodoro.proceed();
     pomodoro.next_cycle();
     assert!(!pomodoro.is_reached_long_break());
     pomodoro.proceed();
     pomodoro.next_cycle();
-    assert_eq!(pomodoro.current_status(), Status::LongBreak);
+    assert_eq!(pomodoro.current_status(), Phase::LongBreak);
     pomodoro.proceed();
     pomodoro.next_cycle();
-    assert_eq!(pomodoro.current_status(), Status::Working);
+    assert_eq!(pomodoro.current_status(), Phase::Working);
     assert!(!pomodoro.is_consumed());
     pomodoro.proceed();
     pomodoro.next_cycle();
