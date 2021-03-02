@@ -59,11 +59,11 @@ impl Shared {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct Clock {
     lifespan: Duration,
     tick_range: Duration,
-    elapsed: Cell<Duration>,
+    elapsed: Arc<Mutex<Cell<Duration>>>,
 }
 
 impl Clock {
@@ -71,7 +71,7 @@ impl Clock {
         Self {
             lifespan,
             tick_range,
-            elapsed: Cell::new(Self::initial_duration()),
+            elapsed: Arc::new(Mutex::new(Cell::new(Self::initial_duration()))),
         }
     }
 
@@ -80,15 +80,21 @@ impl Clock {
     }
 
     fn reset(&self) {
-        self.elapsed.set(Self::initial_duration());
+        let arc = self.elapsed.clone();
+        let locked = arc.lock().unwrap();
+        locked.set(Self::initial_duration());
     }
 
     fn tick(&self) {
-        self.elapsed.set(self.elapsed.get() + self.tick_range);
+        let arc = self.elapsed.clone();
+        let locked = arc.lock().unwrap();
+        locked.set(locked.get() + self.tick_range);
     }
 
     fn is_done(&self) -> bool {
-        self.elapsed.get() >= self.lifespan
+        let arc = self.elapsed.clone();
+        let locked = arc.lock().unwrap();
+        locked.get() >= self.lifespan
     }
 }
 
@@ -211,6 +217,7 @@ impl Pomodoro {
     pub async fn run(&mut self) {
         self.resume();
         while !self.is_consumed() && self.is_active() {
+            println!("oh");
             if !self.current_timer().is_done() {
                 self.wait().await;
                 continue;
@@ -223,17 +230,25 @@ impl Pomodoro {
     }
 }
 
+async fn start(mut pomodoro: Pomodoro) -> Arc<Mutex<Shared>> {
+    let shared = pomodoro.shared.clone();
+    tokio::spawn(async move {
+        pomodoro.run().await;
+    });
+    shared
+}
+
 #[test]
 fn timer_struct() {
     let t = Clock::new(Duration::from_secs(2), Duration::from_secs(1));
-    assert_eq!(t.elapsed.get(), Clock::initial_duration());
+    assert_eq!(t.elapsed.lock().unwrap().get(), Clock::initial_duration());
     t.tick();
     assert!(!t.is_done());
-    assert_eq!(t.elapsed.get(), t.tick_range);
+    assert_eq!(t.elapsed.lock().unwrap().get(), t.tick_range);
     t.tick();
     assert!(t.is_done());
     t.reset();
-    assert_eq!(t.elapsed.get(), Clock::initial_duration());
+    assert_eq!(t.elapsed.lock().unwrap().get(), Clock::initial_duration());
     assert!(!t.is_done());
 }
 
@@ -315,27 +330,20 @@ async fn continuous_option_false() {
     assert_eq!(pomodoro.counter.long_break, 0);
 }
 
-// #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-// async fn runtime() {
-//     let working_timer = Clock::new(Duration::from_micros(1), Duration::from_micros(1));
-//     let short_break_timer = Clock::new(Duration::from_micros(1), Duration::from_micros(1));
-//     let long_break_timer = Clock::new(Duration::from_micros(1), Duration::from_micros(1));
-//     let mut pomodoro = Pomodoro::new(
-//         working_timer,
-//         short_break_timer,
-//         long_break_timer,
-//         2,
-//         true,
-//         Some(100),
-//     );
-//     let (sender, receiver) = mpsc::channel::<Signal>();
-//     let task1 = tokio::spawn(async move {
-//         pomodoro.run().await;
-//     });
-//     let task2 = tokio::spawn(async move {
-//         sleep(Duration::from_micros(1)).await;
-//         let result = sender.send(Signal::Pause);
-//         assert!(result.is_ok());
-//     });
-//     tokio::join!(task1, task2);
-// }
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn runtime() {
+    let working_timer = Clock::new(Duration::from_micros(1), Duration::from_micros(1));
+    let short_break_timer = Clock::new(Duration::from_micros(1), Duration::from_micros(1));
+    let long_break_timer = Clock::new(Duration::from_micros(1), Duration::from_micros(1));
+    let pomodoro = Pomodoro::new(
+        working_timer,
+        short_break_timer,
+        long_break_timer,
+        2,
+        true,
+        None,
+    );
+    let shared = start(pomodoro).await;
+    sleep(Duration::from_millis(10)).await;
+    shared.lock().unwrap().pause();
+}
