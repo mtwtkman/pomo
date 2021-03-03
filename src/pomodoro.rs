@@ -41,7 +41,7 @@ impl Counter {
     }
 }
 
-struct Shared {
+pub struct Shared {
     paused: bool,
 }
 
@@ -50,11 +50,11 @@ impl Shared {
         Self { paused: true }
     }
 
-    fn pause(&mut self) {
+    pub fn pause(&mut self) {
         self.paused = true
     }
 
-    fn resume(&mut self) {
+    pub fn resume(&mut self) {
         self.paused = false
     }
 }
@@ -113,7 +113,7 @@ pub struct Pomodoro {
     continuous: bool,
     until: Option<u8>,
     current_status: Phase,
-    shared: Arc<Mutex<Shared>>,
+    pub shared: Arc<Mutex<Shared>>,
 }
 
 impl Pomodoro {
@@ -216,28 +216,21 @@ impl Pomodoro {
 
     pub async fn run(&mut self) {
         self.resume();
-        while !self.is_consumed() && self.is_active() {
-            println!("oh");
-            if !self.current_timer().is_done() {
-                self.wait().await;
-                continue;
+        loop {
+            while !self.is_consumed() && self.is_active() {
+                println!("{}, {}", &self.counter.working, &self.counter.short_break);
+                if !self.current_timer().is_done() {
+                    self.wait().await;
+                    continue;
+                }
+                self.next_cycle();
+                if !self.continuous {
+                    self.pause();
+                }
             }
-            self.next_cycle();
-            if !self.continuous {
-                self.pause();
-            }
-        };
+        }
     }
 }
-
-async fn start(mut pomodoro: Pomodoro) -> Arc<Mutex<Shared>> {
-    let shared = pomodoro.shared.clone();
-    tokio::spawn(async move {
-        pomodoro.run().await;
-    });
-    shared
-}
-
 #[test]
 fn timer_struct() {
     let t = Clock::new(Duration::from_secs(2), Duration::from_secs(1));
@@ -328,22 +321,4 @@ async fn continuous_option_false() {
     assert_eq!(pomodoro.counter.working, 1);
     assert_eq!(pomodoro.counter.short_break, 0);
     assert_eq!(pomodoro.counter.long_break, 0);
-}
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn runtime() {
-    let working_timer = Clock::new(Duration::from_micros(1), Duration::from_micros(1));
-    let short_break_timer = Clock::new(Duration::from_micros(1), Duration::from_micros(1));
-    let long_break_timer = Clock::new(Duration::from_micros(1), Duration::from_micros(1));
-    let pomodoro = Pomodoro::new(
-        working_timer,
-        short_break_timer,
-        long_break_timer,
-        2,
-        true,
-        None,
-    );
-    let shared = start(pomodoro).await;
-    sleep(Duration::from_millis(10)).await;
-    shared.lock().unwrap().pause();
 }
