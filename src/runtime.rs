@@ -13,7 +13,9 @@ pub async fn start(mut pomodoro: Pomodoro) -> Client {
     let sender = sender.clone();
     let shared = pomodoro.shared.clone();
     tokio::spawn(async move {
-        pomodoro.run().await;
+        loop {
+            pomodoro.run().await;
+        }
     });
 
     tokio::spawn( async move {
@@ -52,20 +54,24 @@ impl Client {
     }
 }
 
-// #[tokio::test(flavor = "multi_thread", worker_threads = 3)]
-// async fn test_main_loop() {
-//     use std::time::Duration;
-//
-//     use tokio::time::sleep;
-//
-//     use crate::pomodoro::Clock;
-//
-//     let working = Clock::new(Duration::from_micros(1), Duration::from_micros(1));
-//     let short_break = Clock::new(Duration::from_micros(1), Duration::from_micros(1));
-//     let long_break = Clock::new(Duration::from_micros(1), Duration::from_micros(1));
-//
-//     let pomodoro = Pomodoro::new(working, short_break, long_break, 3, true, None);
-//     let client= start(pomodoro).await;
-//     sleep(Duration::from_micros(7)).await;
-//     client.pause().await;
-// }
+#[tokio::test(flavor = "multi_thread", worker_threads = 3)]
+async fn test_main_loop() {
+    use std::time::Duration;
+
+    use tokio::time::sleep;
+
+    use crate::pomodoro::Clock;
+
+    let working = Clock::new(Duration::from_micros(1), Duration::from_micros(1));
+    let short_break = Clock::new(Duration::from_micros(1), Duration::from_micros(1));
+    let long_break = Clock::new(Duration::from_micros(1), Duration::from_micros(1));
+
+    let pomodoro = Pomodoro::new(working, short_break, long_break, 3, true, None);
+    let client= start(pomodoro).await;
+    sleep(Duration::from_micros(7)).await;
+    client.pause().await;
+    sleep(Duration::from_micros(7)).await;
+    client.resume().await;
+    sleep(Duration::from_micros(7)).await;
+    client.pause().await;
+}

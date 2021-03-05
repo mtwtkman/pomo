@@ -216,17 +216,14 @@ impl Pomodoro {
 
     pub async fn run(&mut self) {
         self.resume();
-        loop {
-            while !self.is_consumed() && self.is_active() {
-                println!("{}, {}", &self.counter.working, &self.counter.short_break);
-                if !self.current_timer().is_done() {
-                    self.wait().await;
-                    continue;
-                }
-                self.next_cycle();
-                if !self.continuous {
-                    self.pause();
-                }
+        while !self.is_consumed() && self.is_active() {
+            if !self.current_timer().is_done() {
+                self.wait().await;
+                continue;
+            }
+            self.next_cycle();
+            if !self.continuous {
+                self.pause();
             }
         }
     }
@@ -283,7 +280,7 @@ fn pomodoro_timer_works_fine() {
     assert!(pomodoro.is_consumed());
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+#[tokio::test(flavor = "current_thread")]
 async fn trasition() {
     let working_timer = Clock::new(Duration::from_micros(2), Duration::from_micros(1));
     let short_break_timer = Clock::new(Duration::from_micros(3), Duration::from_micros(1));
@@ -303,7 +300,7 @@ async fn trasition() {
     assert_eq!(pomodoro.counter.long_break, 1);
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+#[tokio::test(flavor = "current_thread")]
 async fn continuous_option_false() {
     let working_timer = Clock::new(Duration::from_micros(1), Duration::from_micros(1));
     let short_break_timer = Clock::new(Duration::from_micros(1), Duration::from_micros(1));
