@@ -1,3 +1,4 @@
+use std::fmt::{self, Formatter, Display};
 use std::cell::Cell;
 use std::time::Duration;
 use std::sync::{Arc, Mutex};
@@ -10,6 +11,17 @@ enum Phase {
     Working,
     ShortBreak,
     LongBreak,
+}
+
+impl Display for Phase {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        let s = match self {
+            Phase::Working => "working",
+            Phase::ShortBreak => "short break",
+            Phase::LongBreak => "long break",
+        };
+        write!(f, "Phase: {}", s)
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -64,6 +76,14 @@ pub struct Clock {
     lifespan: Duration,
     tick_range: Duration,
     elapsed: Arc<Mutex<Cell<Duration>>>,
+}
+
+impl Display for Clock {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        let locked = self.elapsed.lock().unwrap();
+        let elapsed = locked.get();
+        write!(f, "now elapsed: {}", elapsed.as_micros())
+    }
 }
 
 impl Clock {
@@ -218,6 +238,7 @@ impl Pomodoro {
         self.resume();
         while !self.is_consumed() && self.is_active() {
             if !self.current_timer().is_done() {
+                println!("{}, {}", self.current_status(), self.current_timer());
                 self.wait().await;
                 continue;
             }
